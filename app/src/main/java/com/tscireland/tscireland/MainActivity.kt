@@ -9,6 +9,7 @@ import android.view.KeyEvent
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
@@ -16,13 +17,15 @@ class MainActivity : AppCompatActivity() {
     // TODO: Review their SDLC
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
         setContentView(R.layout.activity_main)
 
         // Find the WebView by its unique ID
         val webView = findViewById<WebView>(R.id.web)
 
-        if (!isNetworkAvailable(applicationContext) ) { // loading offline
+        if (!isNetworkAvailable(applicationContext)) { // loading offline
             webView.getSettings().cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
         }
 
@@ -36,7 +39,9 @@ class MainActivity : AppCompatActivity() {
         // onPageFinished and override Url loading.
         webView.webViewClient = WebViewClient()
         supportActionBar?.hide()
+
     }
+
     private fun isNetworkAvailable(context: Context): Boolean {
         val connectivityManager = context.getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
         val nw = connectivityManager.activeNetwork ?: return false
@@ -63,4 +68,10 @@ class MainActivity : AppCompatActivity() {
         // system behavior (probably exit the activity)
         return super.onKeyDown(keyCode, event)
     }
+
+//    fun onApplyWindowInsets(v: View?, insets: WindowInsets): WindowInsets {
+//        // Adjust your layout based on insets
+//        val insets = insets.getInsets( WindowInsets.Type.systemBars()
+//
+//    }
 }
