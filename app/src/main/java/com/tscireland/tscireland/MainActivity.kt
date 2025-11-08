@@ -1,5 +1,4 @@
 package com.tscireland.tscireland
-
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
@@ -11,6 +10,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 
 class MainActivity : AppCompatActivity() {
     // Suppressing as the site is rendered through Squarespace code.
@@ -24,6 +26,16 @@ class MainActivity : AppCompatActivity() {
 
         // Find the WebView by its unique ID
         val webView = findViewById<WebView>(R.id.web)
+
+        // Handle system insets
+        ViewCompat.setOnApplyWindowInsetsListener(webView) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(
+                top = insets.top,
+                bottom = insets.bottom
+            )
+            windowInsets
+        }
 
         if (!isNetworkAvailable(applicationContext)) { // loading offline
             webView.getSettings().cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
@@ -39,7 +51,6 @@ class MainActivity : AppCompatActivity() {
         // onPageFinished and override Url loading.
         webView.webViewClient = WebViewClient()
         supportActionBar?.hide()
-
     }
 
     private fun isNetworkAvailable(context: Context): Boolean {
