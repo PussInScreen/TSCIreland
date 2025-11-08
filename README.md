@@ -20,7 +20,8 @@ Requirements:
 Optional:
 - Capacitor / Cordova / PWABuilder if you want a packaged native app
 
-## Project structure (suggested)
+## Project Structure (Suggested)
+Right now, there is only Android. Other versions will begin development an Android release is ready.
 - android/        — Android Studio project or wrapper
 - ios/            — Xcode project or wrapper
 - web/            — PWA assets (service-worker.js, manifest.json)
