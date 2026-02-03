@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Bundle
-import android.view.KeyEvent
+import androidx.activity.addCallback
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -13,7 +13,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
-import androidx.core.view.updatePadding
 
 class MainActivity : AppCompatActivity() {
     // Suppressing as the site is rendered through Squarespace code.
@@ -48,9 +47,26 @@ class MainActivity : AppCompatActivity() {
         // this will enable the javascript.
         webView.settings.javaScriptEnabled = true
 
+        // Prevent content from going off screen
+        webView.settings.useWideViewPort = true
+        webView.settings.loadWithOverviewMode = true
+        webView.settings.setSupportZoom(true)
+        webView.settings.builtInZoomControls = true
+        webView.settings.displayZoomControls = false
+
         // WebViewClient allows you to handle
         // onPageFinished and override Url loading.
         webView.webViewClient = WebViewClient()
+        // Handle back button to navigate in WebView history
+        onBackPressedDispatcher.addCallback(this) {
+            if (webView.canGoBack()) {
+                webView.goBack()
+            } else {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+            }
+        }
+
         supportActionBar?.hide()
     }
 
@@ -68,22 +84,4 @@ class MainActivity : AppCompatActivity() {
             else -> false
         }
     }
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        // Find the WebView by its unique ID
-        val webView = findViewById<WebView>(R.id.web)
-        if (keyCode == KeyEvent.KEYCODE_BACK && webView.canGoBack()) {
-            webView.goBack()
-            return true
-        }
-        // If it wasn't the Back key or there's no webpage history, bubble up to the default
-        // system behavior (probably exit the activity)
-        return super.onKeyDown(keyCode, event)
-    }
-
-//    fun onApplyWindowInsets(v: View?, insets: WindowInsets): WindowInsets {
-//        // Adjust your layout based on insets
-//        val insets = insets.getInsets( WindowInsets.Type.systemBars()
-//
-//    }
 }
