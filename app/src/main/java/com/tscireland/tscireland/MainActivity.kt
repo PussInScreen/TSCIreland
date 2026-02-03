@@ -34,7 +34,7 @@ class MainActivity : AppCompatActivity() {
                 top = insets.top,
                 bottom = insets.bottom
             )
-            windowInsets
+            WindowInsetsCompat.CONSUMED
         }
 
         if (!isNetworkAvailable(applicationContext)) { // loading offline
