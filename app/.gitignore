@@ -1,1 +1,8 @@
 /build
+
+# Local configuration
+/local.properties
+
+# Generated files
+/release
+/debug

@@ -13,3 +13,19 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Keystore files
+*.jks
+*.keystore
+
+# Google Services
+google-services.json
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+output.json
+
+# Profiling
+*.hprof

@@ -12,6 +12,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 
 class MainActivity : AppCompatActivity() {
@@ -27,14 +28,14 @@ class MainActivity : AppCompatActivity() {
         // Find the WebView by its unique ID
         val webView = findViewById<WebView>(R.id.web)
 
-        // Handle system insets
+        // Handle system insets using margins
         ViewCompat.setOnApplyWindowInsetsListener(webView) { view, windowInsets ->
             val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updatePadding(
-                top = insets.top,
-                bottom = insets.bottom
-            )
-            WindowInsetsCompat.CONSUMED
+            view.updateLayoutParams<android.view.ViewGroup.MarginLayoutParams> {
+                topMargin = insets.top
+                bottomMargin = insets.bottom
+            }
+            windowInsets
         }
 
         if (!isNetworkAvailable(applicationContext)) { // loading offline
