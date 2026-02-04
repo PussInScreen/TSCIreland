@@ -1,8 +1,10 @@
 package com.tscireland.tscireland
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.addCallback
 import android.webkit.WebSettings
@@ -10,6 +12,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
@@ -56,7 +59,15 @@ class MainActivity : AppCompatActivity() {
 
         // WebViewClient allows you to handle
         // onPageFinished and override Url loading.
-        webView.webViewClient = WebViewClient()
+        webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                if (url?.endsWith(".pdf", ignoreCase = true) == true) {
+                    CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, Uri.parse(url))
+                    return true
+                }
+                return false
+            }
+        }
         // Handle back button to navigate in WebView history
         onBackPressedDispatcher.addCallback(this) {
             if (webView.canGoBack()) {
