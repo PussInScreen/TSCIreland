@@ -10,6 +10,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceError
 import android.webkit.WebResourceResponse
 import java.io.File
 import java.io.FileInputStream
@@ -87,6 +88,49 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?
+            ) {
+                // Only handle main frame errors to avoid showing error page for subresource failures
+                if (request?.isForMainFrame == true) {
+                    val errorDescription = error?.description?.toString() ?: "Unknown error"
+                    view?.loadDataWithBaseURL(
+                        null,
+                        buildErrorPage(
+                            "Connection Error",
+                            "We couldn't load the page. Please check your internet connection and try again.",
+                            errorDescription
+                        ),
+                        "text/html",
+                        "UTF-8",
+                        null
+                    )
+                }
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?
+            ) {
+                if (request?.isForMainFrame == true) {
+                    val statusCode = errorResponse?.statusCode ?: 0
+                    view?.loadDataWithBaseURL(
+                        null,
+                        buildErrorPage(
+                            "Error $statusCode",
+                            "Something went wrong while loading the page.",
+                            "HTTP $statusCode"
+                        ),
+                        "text/html",
+                        "UTF-8",
+                        null
+                    )
+                }
+            }
+
             override fun shouldInterceptRequest(
                 view: WebView?,
                 request: WebResourceRequest?
@@ -116,6 +160,76 @@ class MainActivity : AppCompatActivity() {
         }
 
         supportActionBar?.hide()
+    }
+
+    private fun buildErrorPage(title: String, message: String, detail: String): String {
+        return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        min-height: 100vh;
+                        margin: 0;
+                        background-color: #f5f5f5;
+                        color: #333;
+                    }
+                    .container {
+                        text-align: center;
+                        padding: 32px;
+                        max-width: 400px;
+                    }
+                    .icon {
+                        font-size: 64px;
+                        margin-bottom: 16px;
+                    }
+                    h1 {
+                        font-size: 22px;
+                        margin-bottom: 8px;
+                        color: #222;
+                    }
+                    p {
+                        font-size: 16px;
+                        line-height: 1.5;
+                        color: #666;
+                        margin-bottom: 24px;
+                    }
+                    .detail {
+                        font-size: 12px;
+                        color: #999;
+                        margin-bottom: 24px;
+                    }
+                    button {
+                        background-color: #6200EE;
+                        color: white;
+                        border: none;
+                        border-radius: 24px;
+                        padding: 12px 32px;
+                        font-size: 16px;
+                        cursor: pointer;
+                        font-weight: 500;
+                    }
+                    button:active {
+                        background-color: #3700B3;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="icon">⚠️</div>
+                    <h1>$title</h1>
+                    <p>$message</p>
+                    <p class="detail">$detail</p>
+                    <button onclick="window.location.href='$mainUrl'">Try Again</button>
+                </div>
+            </body>
+            </html>
+        """.trimIndent()
     }
 
     private fun isNetworkAvailable(context: Context): Boolean {
