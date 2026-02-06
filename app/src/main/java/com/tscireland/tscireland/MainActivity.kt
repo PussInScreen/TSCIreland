@@ -1,15 +1,18 @@
 package com.tscireland.tscireland
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import android.net.Uri
+import androidx.core.net.toUri
 import android.os.Bundle
 import androidx.activity.addCallback
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import java.io.File
+import java.io.FileInputStream
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
@@ -18,6 +21,8 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
 
 class MainActivity : AppCompatActivity() {
+    private val cacheFile by lazy { File(cacheDir, "offline_page.html") }
+    private val mainUrl = "https://tscireland.com/"
     // Suppressing as the site is rendered through Squarespace code.
     // TODO: Review their SDLC
     @SuppressLint("SetJavaScriptEnabled")
@@ -40,15 +45,17 @@ class MainActivity : AppCompatActivity() {
             windowInsets
         }
 
-        if (!isNetworkAvailable(applicationContext)) { // loading offline
-            webView.getSettings().cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
-        }
-
-        // loading url in the WebView.
-        webView.loadUrl("https://tscireland.com/")
+        // loading url in the WebView
+        webView.loadUrl(mainUrl)
 
         // this will enable the javascript.
         webView.settings.javaScriptEnabled = true
+        webView.settings.domStorageEnabled = true
+        webView.settings.cacheMode = if (isNetworkAvailable(applicationContext)) {
+            WebSettings.LOAD_DEFAULT
+        } else {
+            WebSettings.LOAD_CACHE_ELSE_NETWORK
+        }
 
         // Prevent content from going off screen
         webView.settings.useWideViewPort = true
@@ -60,12 +67,42 @@ class MainActivity : AppCompatActivity() {
         // WebViewClient allows you to handle
         // onPageFinished and override Url loading.
         webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url?.toString()
                 if (url?.endsWith(".pdf", ignoreCase = true) == true) {
-                    CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, Uri.parse(url))
+                    CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, url.toUri())
                     return true
                 }
                 return false
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                // Save page content for offline use
+                if (isNetworkAvailable(applicationContext) && url?.startsWith(mainUrl) == true) {
+                    view?.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                        val decoded = html?.replace("\\u003C", "<")?.replace("\\\"", "\"")
+                        cacheFile.writeText(decoded ?: "")
+                    }
+                }
+            }
+
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): WebResourceResponse? {
+                val url = request?.url?.toString() ?: return super.shouldInterceptRequest(view, request)
+                // Serve cached HTML for main page when offline
+                if (!isNetworkAvailable(applicationContext) && 
+                    (url == mainUrl || url == "${mainUrl}/") && 
+                    cacheFile.exists()) {
+                    return WebResourceResponse(
+                        "text/html",
+                        "UTF-8",
+                        FileInputStream(cacheFile)
+                    )
+                }
+                return super.shouldInterceptRequest(view, request)
             }
         }
         // Handle back button to navigate in WebView history
