@@ -10,6 +10,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
+import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -34,6 +35,22 @@ class MainActivity : AppCompatActivity() {
 
     private val cacheFile by lazy { File(cacheDir, "offline_page.html") }
     private val mainUrl = "https://tscireland.org/"
+
+    /** JavaScript interface for handling email links from WebView */
+    inner class EmailJavaScriptInterface {
+        @JavascriptInterface
+        fun openEmail(emailUrl: String) {
+            try {
+                val intent = Intent(Intent.ACTION_SENDTO).apply {
+                    data = emailUrl.toUri()
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(intent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     /** Domains that should be opened in their native app when available. */
     private val socialDomains = listOf(
@@ -99,6 +116,8 @@ class MainActivity : AppCompatActivity() {
             builtInZoomControls = true
             displayZoomControls = false
         }
+        // Add JavaScript interface for email handling
+        webView.addJavascriptInterface(EmailJavaScriptInterface(), "AndroidInterface")
     }
 
     /** Registers the back-press callback so the hardware back button navigates WebView history. */
@@ -121,6 +140,22 @@ class MainActivity : AppCompatActivity() {
         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
             val url = request?.url?.toString() ?: return false
             val host = request.url?.host ?: return false
+
+            // Open email links in external email app
+            if (url.startsWith("mailto:", ignoreCase = true)) {
+                return try {
+                    val intent = Intent(Intent.ACTION_SENDTO).apply {
+                        data = url.toUri()
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    startActivity(intent)
+                    true
+                } catch (e: Exception) {
+                    // Log the error for debugging
+                    e.printStackTrace()
+                    false
+                }
+            }
 
             // Open PDFs in a Chrome Custom Tab
             if (url.endsWith(".pdf", ignoreCase = true)) {
@@ -157,10 +192,18 @@ class MainActivity : AppCompatActivity() {
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
             // Rewrite target="_blank" links so they go through shouldOverrideUrlLoading
+            // Also handle mailto links that might not trigger shouldOverrideUrlLoading
             view?.evaluateJavascript("""
                 (function() {
                     document.querySelectorAll('a[target="_blank"]').forEach(function(a) {
                         a.setAttribute('target', '_self');
+                    });
+                    // Handle mailto links
+                    document.querySelectorAll('a[href^="mailto:"]').forEach(function(a) {
+                        a.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            window.AndroidInterface.openEmail(this.href);
+                        });
                     });
                     new MutationObserver(function(mutations) {
                         mutations.forEach(function(m) {
@@ -168,6 +211,12 @@ class MainActivity : AppCompatActivity() {
                                 if (node.querySelectorAll) {
                                     node.querySelectorAll('a[target="_blank"]').forEach(function(a) {
                                         a.setAttribute('target', '_self');
+                                    });
+                                    node.querySelectorAll('a[href^="mailto:"]').forEach(function(a) {
+                                        a.addEventListener('click', function(e) {
+                                            e.preventDefault();
+                                            window.AndroidInterface.openEmail(this.href);
+                                        });
                                     });
                                 }
                             });
