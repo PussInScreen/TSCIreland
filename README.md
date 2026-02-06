@@ -1,102 +1,71 @@
-# TSC Ireland — Mobile PWA Wrapper
+# TSC Ireland — Android App
 
-A lightweight Android & iOS project that delivers www.tscireland.org as a Progressive Web App (PWA) with offline caching. This repository contains the native shell and guidance to run the site as a cached PWA on mobile devices.
-
-## Overview
-- Purpose: Provide an Android/iOS app that loads and caches the public site for offline use.
-- Approach: Serve the website in a WebView/native wrapper or install the PWA on the device using standard PWA tooling (Service Worker + manifest).
+A lightweight Android app that wraps [tscireland.org](https://tscireland.org/) in a WebView with offline caching, edge-to-edge display, and external-link handling.
 
 ## Features
-- Loads www.tscireland.org
-- Offline caching via Service Worker
-- Web App Manifest for installability
-- Simple native wrappers for Android and iOS (optional)
 
-## Getting started (quick)
-Requirements:
-- Android Studio (for Android)
-- Xcode (for iOS)
-- Node.js + npm (for PWA tooling / building service worker)
-Optional:
-- Capacitor / Cordova / PWABuilder if you want a packaged native app
+- **WebView wrapper** — loads tscireland.org as a single-activity app
+- **Offline caching** — saves the homepage HTML for offline viewing
+- **External link routing** — social media links open in native apps; PDFs and other external links open in Chrome Custom Tabs
+- **Edge-to-edge support** — respects system bar insets on API 35+
+- **Back navigation** — hardware back button navigates WebView history
+- **Error pages** — user-friendly error screens for connectivity and HTTP failures
 
-## Project Structure (Suggested)
-Right now, there is only Android. Other versions will begin development an Android release is ready.
-- android/        — Android Studio project or wrapper
-- ios/            — Xcode project or wrapper
-- web/            — PWA assets (service-worker.js, manifest.json)
-- README.md
+## Requirements
 
-## Example service-worker.js (basic cache-first)
-```js
-const CACHE = 'tsc-cache-v1';
-const URLS_TO_CACHE = [
-    '/',
-    '/index.html',
-    // add any critical assets or routes you want cached
-];
+- **Android Studio** (Ladybug or later recommended)
+- **JDK 17** (for Gradle builds)
+- **Min SDK 33** (Android 13)
 
-self.addEventListener('install', e => {
-    e.waitUntil(caches.open(CACHE).then(c => c.addAll(URLS_TO_CACHE)));
-    self.skipWaiting();
-});
+## Getting Started
 
-self.addEventListener('fetch', e => {
-    e.respondWith(
-        caches.match(e.request).then(cached =>
-            cached || fetch(e.request).then(res => {
-                return caches.open(CACHE).then(cache => {
-                    // Optionally cache non-opaque responses
-                    try { cache.put(e.request, res.clone()); } catch (err) {}
-                    return res;
-                });
-            }).catch(() => caches.match('/offline.html'))
-        )
-    );
-});
+1. Clone the repository
+2. Open the project in Android Studio
+3. Sync Gradle and build
+4. Run on a device or emulator (API 33+)
+
+## Project Structure
+
+```text
+app/
+  src/main/
+    java/com/tscireland/tscireland/
+      MainActivity.kt          # Single activity with WebView setup
+    res/
+      layout/activity_main.xml  # WebView layout
+      values/themes.xml         # Light theme
+      values-night/themes.xml   # Dark theme
+gradle/
+  libs.versions.toml            # Version catalog
+.github/workflows/
+  android.yml                   # CI build workflow
 ```
 
-## Web App Manifest (manifest.json) example
-```json
-{
-    "name": "TSC Ireland",
-    "short_name": "TSC",
-    "start_url": "/",
-    "display": "standalone",
-    "background_color": "#ffffff",
-    "theme_color": "#2d6cdf",
-    "icons": [
-        { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-        { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
-    ]
-}
+## Building a Release
+
+Release signing requires a `keystore.properties` file in the project root:
+
+```properties
+storeFile=path/to/keystore.jks
+storePassword=your_store_password
+keyAlias=your_key_alias
+keyPassword=your_key_password
 ```
 
-## Running & testing
-- PWA:
-    1. Serve `web/` folder (e.g., `npx http-server web`).
-    2. Use Chrome DevTools Application panel to register service worker and test offline.
-- Android:
-    - Open android/ in Android Studio, ensure the WebView or packaged PWA points to the site or local assets, build & run.
-- iOS:
-    - Open ios/ in Xcode, configure WKWebView or Packaged PWA settings, build & run.
+## Security & Privacy
 
-## Packaging options
-- Capacitor: Use to wrap the PWA into native projects quickly.
-- PWABuilder: Automates generation of platform-specific wrappers.
-- Native WebView: Implement custom WebView/WKWebView with caching policies.
-
-## Security & privacy
-- Respect the upstream website's content and CORS policies.
-- Only cache content that you are authorized to cache.
-- Use HTTPS for site assets.
+- All traffic uses HTTPS
+- Only tscireland.org homepage content is cached for offline use
+- JavaScript is enabled to support the Squarespace-hosted site
 
 ## Contributing
-- Fork → branch → PR
-- Describe changes and include testing steps (Android/iOS/PWA).
+
+Fork, branch, PR. Include a description of changes and testing steps.
 
 ## License
+
 GPLv3
 
 ## Contact
-Project: TSC Ireland — info@tscireland.org
+
+TSC Ireland — <info@tscireland.org>

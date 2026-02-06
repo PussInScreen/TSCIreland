@@ -1,32 +1,53 @@
 package com.tscireland.tscireland
+
+import java.io.File
+import java.io.FileInputStream
+
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
-import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import androidx.core.net.toUri
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.addCallback
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceError
-import android.webkit.WebResourceResponse
-import java.io.File
-import java.io.FileInputStream
+
+import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
 
+/**
+ * Single-activity wrapper that loads [tscireland.org](https://tscireland.org/) inside a
+ * [WebView] with offline caching, edge-to-edge support, and external-link handling.
+ */
 class MainActivity : AppCompatActivity() {
+
     private val cacheFile by lazy { File(cacheDir, "offline_page.html") }
     private val mainUrl = "https://tscireland.org/"
+
+    /** Domains that should be opened in their native app when available. */
+    private val socialDomains = listOf(
+        "facebook.com", "fb.com",
+        "instagram.com",
+        "twitter.com", "x.com",
+        "linkedin.com",
+        "youtube.com", "youtu.be",
+        "tiktok.com",
+        "snapchat.com",
+        "threads.net",
+        "pinterest.com"
+    )
+
     // Suppressing as the site is rendered through Squarespace code.
     // TODO: Review their SDLC
     @SuppressLint("SetJavaScriptEnabled")
@@ -35,13 +56,21 @@ class MainActivity : AppCompatActivity() {
             enableEdgeToEdge()
         }
         super.onCreate(savedInstanceState)
-
         setContentView(R.layout.activity_main)
 
-        // Find the WebView by its unique ID
         val webView = findViewById<WebView>(R.id.web)
+        applyEdgeToEdgeInsets(webView)
+        configureWebSettings(webView)
+        webView.webViewClient = createWebViewClient()
+        webView.loadUrl(mainUrl)
+        registerBackNavigation(webView)
+        supportActionBar?.hide()
+    }
 
-        // Handle system insets using margins (only needed when edge-to-edge is enforced)
+    // ── WebView configuration ────────────────────────────────────────────
+
+    /** Applies system-bar insets as margins when edge-to-edge is enforced (API 35+). */
+    private fun applyEdgeToEdgeInsets(webView: WebView) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             ViewCompat.setOnApplyWindowInsetsListener(webView) { view, windowInsets ->
                 val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
@@ -52,167 +81,28 @@ class MainActivity : AppCompatActivity() {
                 windowInsets
             }
         }
+    }
 
-        // this will enable the javascript.
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
-        webView.settings.cacheMode = if (isNetworkAvailable(applicationContext)) {
-            WebSettings.LOAD_DEFAULT
-        } else {
-            WebSettings.LOAD_CACHE_ELSE_NETWORK
+    /** Configures JavaScript, DOM storage, caching, viewport, and zoom settings. */
+    private fun configureWebSettings(webView: WebView) {
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            cacheMode = if (isNetworkAvailable()) {
+                WebSettings.LOAD_DEFAULT
+            } else {
+                WebSettings.LOAD_CACHE_ELSE_NETWORK
+            }
+            useWideViewPort = true
+            loadWithOverviewMode = true
+            setSupportZoom(true)
+            builtInZoomControls = true
+            displayZoomControls = false
         }
+    }
 
-        // Prevent content from going off screen
-        webView.settings.useWideViewPort = true
-        webView.settings.loadWithOverviewMode = true
-        webView.settings.setSupportZoom(true)
-        webView.settings.builtInZoomControls = true
-        webView.settings.displayZoomControls = false
-
-        // WebViewClient allows you to handle
-        // onPageFinished and override Url loading.
-        webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                val url = request?.url?.toString() ?: return false
-                val host = request.url?.host ?: return false
-
-                if (url.endsWith(".pdf", ignoreCase = true)) {
-                    CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, url.toUri())
-                    return true
-                }
-
-                if (!host.contains("tscireland.org", ignoreCase = true)) {
-                    val socialDomains = listOf(
-                        "facebook.com", "fb.com",
-                        "instagram.com",
-                        "twitter.com", "x.com",
-                        "linkedin.com",
-                        "youtube.com", "youtu.be",
-                        "tiktok.com",
-                        "snapchat.com",
-                        "threads.net",
-                        "pinterest.com"
-                    )
-                    val isSocial = socialDomains.any { host.endsWith(it, ignoreCase = true) }
-
-                    if (isSocial) {
-                        // Open in native app only — fall back to WebView if not installed
-                        val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
-                            addCategory(Intent.CATEGORY_BROWSABLE)
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                                    Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER
-                        }
-                        return try {
-                            startActivity(intent)
-                            true
-                        } catch (_: ActivityNotFoundException) {
-                            false
-                        }
-                    } else {
-                        // All other external links — open in a browser tab
-                        CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, url.toUri())
-                        return true
-                    }
-                }
-
-                return false
-            }
-
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                // Rewrite target="_blank" links so they go through shouldOverrideUrlLoading
-                view?.evaluateJavascript("""
-                    (function() {
-                        document.querySelectorAll('a[target="_blank"]').forEach(function(a) {
-                            a.setAttribute('target', '_self');
-                        });
-                        new MutationObserver(function(mutations) {
-                            mutations.forEach(function(m) {
-                                m.addedNodes.forEach(function(node) {
-                                    if (node.querySelectorAll) {
-                                        node.querySelectorAll('a[target="_blank"]').forEach(function(a) {
-                                            a.setAttribute('target', '_self');
-                                        });
-                                    }
-                                });
-                            });
-                        }).observe(document.body, {childList: true, subtree: true});
-                    })();
-                """.trimIndent(), null)
-                // Save page content for offline use
-                if (isNetworkAvailable(applicationContext) && url?.startsWith(mainUrl) == true) {
-                    view?.evaluateJavascript("document.documentElement.outerHTML") { html ->
-                        val decoded = html?.replace("\\u003C", "<")?.replace("\\\"", "\"")
-                        cacheFile.writeText(decoded ?: "")
-                    }
-                }
-            }
-
-            override fun onReceivedError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                error: WebResourceError?
-            ) {
-                // Only handle main frame errors to avoid showing error page for subresource failures
-                if (request?.isForMainFrame == true) {
-                    val errorDescription = error?.description?.toString() ?: "Unknown error"
-                    view?.loadDataWithBaseURL(
-                        null,
-                        buildErrorPage(
-                            "Connection Error",
-                            "We couldn't load the page. Please check your internet connection and try again.",
-                            errorDescription
-                        ),
-                        "text/html",
-                        "UTF-8",
-                        null
-                    )
-                }
-            }
-
-            override fun onReceivedHttpError(
-                view: WebView?,
-                request: WebResourceRequest?,
-                errorResponse: WebResourceResponse?
-            ) {
-                if (request?.isForMainFrame == true) {
-                    val statusCode = errorResponse?.statusCode ?: 0
-                    view?.loadDataWithBaseURL(
-                        null,
-                        buildErrorPage(
-                            "Error $statusCode",
-                            "Something went wrong while loading the page.",
-                            "HTTP $statusCode"
-                        ),
-                        "text/html",
-                        "UTF-8",
-                        null
-                    )
-                }
-            }
-
-            override fun shouldInterceptRequest(
-                view: WebView?,
-                request: WebResourceRequest?
-            ): WebResourceResponse? {
-                val url = request?.url?.toString() ?: return super.shouldInterceptRequest(view, request)
-                // Serve cached HTML for main page when offline
-                if (!isNetworkAvailable(applicationContext) && 
-                    (url == mainUrl || url == "${mainUrl}/") && 
-                    cacheFile.exists()) {
-                    return WebResourceResponse(
-                        "text/html",
-                        "UTF-8",
-                        FileInputStream(cacheFile)
-                    )
-                }
-                return super.shouldInterceptRequest(view, request)
-            }
-        }
-        // loading url in the WebView
-        webView.loadUrl(mainUrl)
-
-        // Handle back button to navigate in WebView history
+    /** Registers the back-press callback so the hardware back button navigates WebView history. */
+    private fun registerBackNavigation(webView: WebView) {
         onBackPressedDispatcher.addCallback(this) {
             if (webView.canGoBack()) {
                 webView.goBack()
@@ -221,8 +111,140 @@ class MainActivity : AppCompatActivity() {
                 onBackPressedDispatcher.onBackPressed()
             }
         }
+    }
 
-        supportActionBar?.hide()
+    // ── WebViewClient ────────────────────────────────────────────────────
+
+    /** Creates a [WebViewClient] that handles link routing, offline caching, and error pages. */
+    private fun createWebViewClient(): WebViewClient = object : WebViewClient() {
+
+        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+            val url = request?.url?.toString() ?: return false
+            val host = request.url?.host ?: return false
+
+            // Open PDFs in a Chrome Custom Tab
+            if (url.endsWith(".pdf", ignoreCase = true)) {
+                CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, url.toUri())
+                return true
+            }
+
+            if (!host.contains("tscireland.org", ignoreCase = true)) {
+                val isSocial = socialDomains.any { host.endsWith(it, ignoreCase = true) }
+
+                if (isSocial) {
+                    // Open in native app only — fall back to WebView if not installed
+                    val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
+                        addCategory(Intent.CATEGORY_BROWSABLE)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER
+                    }
+                    return try {
+                        startActivity(intent)
+                        true
+                    } catch (_: ActivityNotFoundException) {
+                        false
+                    }
+                } else {
+                    // All other external links — open in a Chrome Custom Tab
+                    CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, url.toUri())
+                    return true
+                }
+            }
+
+            return false
+        }
+
+        override fun onPageFinished(view: WebView?, url: String?) {
+            super.onPageFinished(view, url)
+            // Rewrite target="_blank" links so they go through shouldOverrideUrlLoading
+            view?.evaluateJavascript("""
+                (function() {
+                    document.querySelectorAll('a[target="_blank"]').forEach(function(a) {
+                        a.setAttribute('target', '_self');
+                    });
+                    new MutationObserver(function(mutations) {
+                        mutations.forEach(function(m) {
+                            m.addedNodes.forEach(function(node) {
+                                if (node.querySelectorAll) {
+                                    node.querySelectorAll('a[target="_blank"]').forEach(function(a) {
+                                        a.setAttribute('target', '_self');
+                                    });
+                                }
+                            });
+                        });
+                    }).observe(document.body, {childList: true, subtree: true});
+                })();
+            """.trimIndent(), null)
+
+            // Cache the page HTML for offline use
+            if (isNetworkAvailable() && url?.startsWith(mainUrl) == true) {
+                view?.evaluateJavascript("document.documentElement.outerHTML") { html ->
+                    val decoded = html?.replace("\\u003C", "<")?.replace("\\\"", "\"")
+                    cacheFile.writeText(decoded ?: "")
+                }
+            }
+        }
+
+        override fun onReceivedError(
+            view: WebView?,
+            request: WebResourceRequest?,
+            error: WebResourceError?
+        ) {
+            // Only handle main-frame errors to avoid replacing content for sub-resource failures
+            if (request?.isForMainFrame == true) {
+                val errorDescription = error?.description?.toString() ?: "Unknown error"
+                view?.loadDataWithBaseURL(
+                    null,
+                    buildErrorPage(
+                        "Connection Error",
+                        "We couldn't load the page. Please check your internet connection and try again.",
+                        errorDescription
+                    ),
+                    "text/html",
+                    "UTF-8",
+                    null
+                )
+            }
+        }
+
+        override fun onReceivedHttpError(
+            view: WebView?,
+            request: WebResourceRequest?,
+            errorResponse: WebResourceResponse?
+        ) {
+            if (request?.isForMainFrame == true) {
+                val statusCode = errorResponse?.statusCode ?: 0
+                view?.loadDataWithBaseURL(
+                    null,
+                    buildErrorPage(
+                        "Error $statusCode",
+                        "Something went wrong while loading the page.",
+                        "HTTP $statusCode"
+                    ),
+                    "text/html",
+                    "UTF-8",
+                    null
+                )
+            }
+        }
+
+        override fun shouldInterceptRequest(
+            view: WebView?,
+            request: WebResourceRequest?
+        ): WebResourceResponse? {
+            val url = request?.url?.toString() ?: return super.shouldInterceptRequest(view, request)
+            // Serve cached HTML for the main page when offline
+            if (!isNetworkAvailable() &&
+                (url == mainUrl || url == "${mainUrl}/") &&
+                cacheFile.exists()) {
+                return WebResourceResponse(
+                    "text/html",
+                    "UTF-8",
+                    FileInputStream(cacheFile)
+                )
+            }
+            return super.shouldInterceptRequest(view, request)
+        }
     }
 
     private fun buildErrorPage(title: String, message: String, detail: String): String {
@@ -295,18 +317,17 @@ class MainActivity : AppCompatActivity() {
         """.trimIndent()
     }
 
-    private fun isNetworkAvailable(context: Context): Boolean {
-        val connectivityManager = context.getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
-        val nw = connectivityManager.activeNetwork ?: return false
-        val actNw = connectivityManager.getNetworkCapabilities(nw) ?: return false
-        return when {
-            actNw.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> true
-            actNw.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> true
-            //for other device how are able to connect with Ethernet
-            actNw.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> true
-            //for check internet over Bluetooth
-            actNw.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH) -> true
-            else -> false
-        }
+    /**
+     * Checks whether the device currently has an active network connection
+     * over Wi-Fi, cellular, Ethernet, or Bluetooth.
+     */
+    private fun isNetworkAvailable(): Boolean {
+        val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH)
     }
 }
