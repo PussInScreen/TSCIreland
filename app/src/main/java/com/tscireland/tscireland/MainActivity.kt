@@ -1,9 +1,12 @@
 package com.tscireland.tscireland
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.core.net.toUri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.addCallback
 import android.webkit.WebSettings
@@ -23,12 +26,14 @@ import androidx.core.view.updateLayoutParams
 
 class MainActivity : AppCompatActivity() {
     private val cacheFile by lazy { File(cacheDir, "offline_page.html") }
-    private val mainUrl = "https://tscireland.com/"
+    private val mainUrl = "https://tscireland.org/"
     // Suppressing as the site is rendered through Squarespace code.
     // TODO: Review their SDLC
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            enableEdgeToEdge()
+        }
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.activity_main)
@@ -36,18 +41,17 @@ class MainActivity : AppCompatActivity() {
         // Find the WebView by its unique ID
         val webView = findViewById<WebView>(R.id.web)
 
-        // Handle system insets using margins
-        ViewCompat.setOnApplyWindowInsetsListener(webView) { view, windowInsets ->
-            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
-            view.updateLayoutParams<android.view.ViewGroup.MarginLayoutParams> {
-                topMargin = insets.top
-                bottomMargin = insets.bottom
+        // Handle system insets using margins (only needed when edge-to-edge is enforced)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+            ViewCompat.setOnApplyWindowInsetsListener(webView) { view, windowInsets ->
+                val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+                view.updateLayoutParams<android.view.ViewGroup.MarginLayoutParams> {
+                    topMargin = insets.top
+                    bottomMargin = insets.bottom
+                }
+                windowInsets
             }
-            windowInsets
         }
-
-        // loading url in the WebView
-        webView.loadUrl(mainUrl)
 
         // this will enable the javascript.
         webView.settings.javaScriptEnabled = true
@@ -69,16 +73,72 @@ class MainActivity : AppCompatActivity() {
         // onPageFinished and override Url loading.
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                val url = request?.url?.toString()
-                if (url?.endsWith(".pdf", ignoreCase = true) == true) {
+                val url = request?.url?.toString() ?: return false
+                val host = request.url?.host ?: return false
+
+                if (url.endsWith(".pdf", ignoreCase = true)) {
                     CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, url.toUri())
                     return true
                 }
+
+                if (!host.contains("tscireland.org", ignoreCase = true)) {
+                    val socialDomains = listOf(
+                        "facebook.com", "fb.com",
+                        "instagram.com",
+                        "twitter.com", "x.com",
+                        "linkedin.com",
+                        "youtube.com", "youtu.be",
+                        "tiktok.com",
+                        "snapchat.com",
+                        "threads.net",
+                        "pinterest.com"
+                    )
+                    val isSocial = socialDomains.any { host.endsWith(it, ignoreCase = true) }
+
+                    if (isSocial) {
+                        // Open in native app only — fall back to WebView if not installed
+                        val intent = Intent(Intent.ACTION_VIEW, url.toUri()).apply {
+                            addCategory(Intent.CATEGORY_BROWSABLE)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_REQUIRE_NON_BROWSER
+                        }
+                        return try {
+                            startActivity(intent)
+                            true
+                        } catch (_: ActivityNotFoundException) {
+                            false
+                        }
+                    } else {
+                        // All other external links — open in a browser tab
+                        CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, url.toUri())
+                        return true
+                    }
+                }
+
                 return false
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                // Rewrite target="_blank" links so they go through shouldOverrideUrlLoading
+                view?.evaluateJavascript("""
+                    (function() {
+                        document.querySelectorAll('a[target="_blank"]').forEach(function(a) {
+                            a.setAttribute('target', '_self');
+                        });
+                        new MutationObserver(function(mutations) {
+                            mutations.forEach(function(m) {
+                                m.addedNodes.forEach(function(node) {
+                                    if (node.querySelectorAll) {
+                                        node.querySelectorAll('a[target="_blank"]').forEach(function(a) {
+                                            a.setAttribute('target', '_self');
+                                        });
+                                    }
+                                });
+                            });
+                        }).observe(document.body, {childList: true, subtree: true});
+                    })();
+                """.trimIndent(), null)
                 // Save page content for offline use
                 if (isNetworkAvailable(applicationContext) && url?.startsWith(mainUrl) == true) {
                     view?.evaluateJavascript("document.documentElement.outerHTML") { html ->
@@ -149,6 +209,9 @@ class MainActivity : AppCompatActivity() {
                 return super.shouldInterceptRequest(view, request)
             }
         }
+        // loading url in the WebView
+        webView.loadUrl(mainUrl)
+
         // Handle back button to navigate in WebView history
         onBackPressedDispatcher.addCallback(this) {
             if (webView.canGoBack()) {
