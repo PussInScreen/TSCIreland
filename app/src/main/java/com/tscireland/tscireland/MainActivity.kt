@@ -1,7 +1,6 @@
 package com.tscireland.tscireland
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.core.net.toUri
@@ -11,10 +10,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebResourceRequest
-import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceResponse
-import android.os.Message
 import java.io.File
 import java.io.FileInputStream
 import androidx.activity.enableEdgeToEdge
@@ -67,57 +64,13 @@ class MainActivity : AppCompatActivity() {
         webView.settings.setSupportZoom(true)
         webView.settings.builtInZoomControls = true
         webView.settings.displayZoomControls = false
-        webView.settings.setSupportMultipleWindows(true)
-        webView.settings.javaScriptCanOpenWindowsAutomatically = true
-
-        // Handle target="_blank" links by opening them externally
-        webView.webChromeClient = object : WebChromeClient() {
-            override fun onCreateWindow(
-                view: WebView?,
-                isDialog: Boolean,
-                isUserGesture: Boolean,
-                resultMsg: Message?
-            ): Boolean {
-                val result = view?.hitTestResult
-                val url = result?.extra
-                if (url != null) {
-                    val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-                    startActivity(intent)
-                } else {
-                    // Fallback: create a temporary WebView to capture the URL
-                    val tempWebView = WebView(this@MainActivity)
-                    tempWebView.webViewClient = object : WebViewClient() {
-                        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                            val targetUrl = request?.url?.toString() ?: return false
-                            val intent = Intent(Intent.ACTION_VIEW, targetUrl.toUri())
-                            startActivity(intent)
-                            return true
-                        }
-                    }
-                    val transport = resultMsg?.obj as? WebView.WebViewTransport
-                    transport?.webView = tempWebView
-                    resultMsg?.sendToTarget()
-                    return true
-                }
-                return false
-            }
-        }
 
         // WebViewClient allows you to handle
         // onPageFinished and override Url loading.
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                val url = request?.url?.toString() ?: return false
-                val host = request.url?.host ?: return false
-
-                // Open external links (non-tscireland.com) in their associated apps
-                if (!host.contains("tscireland.com", ignoreCase = true)) {
-                    val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-                    startActivity(intent)
-                    return true
-                }
-
-                if (url.endsWith(".pdf", ignoreCase = true)) {
+                val url = request?.url?.toString()
+                if (url?.endsWith(".pdf", ignoreCase = true) == true) {
                     CustomTabsIntent.Builder().build().launchUrl(this@MainActivity, url.toUri())
                     return true
                 }
